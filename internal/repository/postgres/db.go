@@ -1,12 +1,13 @@
 package postgres
 
 import (
-	"database/sql"
 	"fmt"
+	"log"
 	"os"
 	"time"
 
-	_ "github.com/lib/pq"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 // Config holds the database configuration
@@ -32,33 +33,61 @@ func NewConfig() *Config {
 }
 
 // Connect establishes a connection to the database with retries
-func Connect(config *Config) (*sql.DB, error) {
+func Connect(config *Config) (*gorm.DB, error) {
+	return ConnectWithParams(config.Host, config.Port, config.User, config.Password, config.DBName, config.SSLMode)
+}
+
+func ConnectWithParams(host, port, user, password, dbname, sslmode string) (*gorm.DB, error) {
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		config.Host, config.Port, config.User, config.Password, config.DBName, config.SSLMode)
+		host, port, user, password, dbname, sslmode)
 
-	var db *sql.DB
+	// Configure connection with retries
+	var db *gorm.DB
 	var err error
-	
-	// Try to connect with retries
 	maxRetries := 5
+	retryDelay := time.Second * 5
+
 	for i := 0; i < maxRetries; i++ {
-		db, err = sql.Open("postgres", dsn)
-		if err != nil {
-			time.Sleep(time.Second * 2)
-			continue
-		}
+		db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
+			PrepareStmt: true,
+			NowFunc: func() time.Time {
+				return time.Now().UTC()
+			},
+		})
 
-		// Test the connection
-		err = db.Ping()
 		if err == nil {
-			return db, nil
+			break
 		}
 
-		fmt.Printf("Failed to connect to database (attempt %d/%d): %v\n", i+1, maxRetries, err)
-		time.Sleep(time.Second * 2)
+		log.Printf("Failed to connect to database (attempt %d/%d): %v", i+1, maxRetries, err)
+		if i < maxRetries-1 {
+			time.Sleep(retryDelay)
+		}
 	}
 
-	return nil, fmt.Errorf("failed to connect to database after %d attempts: %v", maxRetries, err)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to database after %d attempts: %v", maxRetries, err)
+	}
+
+	// Get the underlying *sql.DB instance
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database instance: %v", err)
+	}
+
+	// Configure connection pool
+	sqlDB.SetMaxOpenConns(1000)     // Maximum number of open connections
+	sqlDB.SetMaxIdleConns(100)      // Maximum number of idle connections
+	sqlDB.SetConnMaxLifetime(time.Hour) // Maximum lifetime of a connection
+	sqlDB.SetConnMaxIdleTime(time.Minute * 30) // Maximum idle time for a connection
+
+	// Configure statement timeout using GORM
+	db = db.Session(&gorm.Session{
+		PrepareStmt:      true,
+		CreateBatchSize:  1000,
+	}).Exec("SET statement_timeout = ?", 5000) // 5 seconds in milliseconds
+
+	return db, nil
 }
 
 func getEnv(key, defaultValue string) string {

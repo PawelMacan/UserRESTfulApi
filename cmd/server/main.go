@@ -3,6 +3,7 @@ package main
 import (
 	"UserRESTfulApi/internal"
 	"UserRESTfulApi/pkg/config"
+	"fmt"
 	"log"
 	"os"
 
@@ -21,18 +22,18 @@ func main() {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 
-	// Initialize router
-	router := internal.NewRouter(db)
-
 	// Get port from environment variable or use default
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
+	// Initialize router
+	router := internal.NewRouter(db)
+
 	// Start server
 	log.Printf("Server starting on port %s", port)
-	if err := router.Run(":" + port); err != nil {
+	if err := router.Run(fmt.Sprintf(":%s", port)); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 }
