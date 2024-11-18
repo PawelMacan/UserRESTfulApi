@@ -3,6 +3,7 @@ package postgres
 import (
 	"UserRESTfulApi/internal/domain"
 	"UserRESTfulApi/internal/errors"
+	"log"
 	"time"
 
 	"gorm.io/gorm"
@@ -24,6 +25,7 @@ func (r *userRepository) Create(user *domain.User) error {
 
 	result := r.db.Create(user)
 	if result.Error != nil {
+		log.Printf("Failed to create user with email %s: %v", user.Email, result.Error)
 		return errors.DatabaseError("create", result.Error)
 	}
 
@@ -38,6 +40,7 @@ func (r *userRepository) Get(id uint) (*domain.User, error) {
 		if result.Error == gorm.ErrRecordNotFound {
 			return nil, nil
 		}
+		log.Printf("Failed to get user with id %d: %v", id, result.Error)
 		return nil, errors.DatabaseError("get", result.Error)
 	}
 
@@ -51,8 +54,10 @@ func (r *userRepository) Update(user *domain.User) error {
 	result := r.db.Save(user)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
+			log.Printf("Failed to update user with id %d: %v", user.ID, result.Error)
 			return errors.NotFoundError("user", user.ID)
 		}
+		log.Printf("Failed to update user with id %d: %v", user.ID, result.Error)
 		return errors.DatabaseError("update", result.Error)
 	}
 
@@ -64,8 +69,10 @@ func (r *userRepository) Delete(id uint) error {
 	result := r.db.Delete(&domain.User{}, id)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
+			log.Printf("Failed to delete user with id %d: %v", id, result.Error)
 			return errors.NotFoundError("user", id)
 		}
+		log.Printf("Failed to delete user with id %d: %v", id, result.Error)
 		return errors.DatabaseError("delete", result.Error)
 	}
 
@@ -79,6 +86,7 @@ func (r *userRepository) List(page, limit int) ([]*domain.User, error) {
 
 	result := r.db.Offset(offset).Limit(limit).Find(&users)
 	if result.Error != nil {
+		log.Printf("Failed to list users: %v", result.Error)
 		return nil, errors.DatabaseError("list", result.Error)
 	}
 
@@ -93,6 +101,7 @@ func (r *userRepository) GetByEmail(email string) (*domain.User, error) {
 		if result.Error == gorm.ErrRecordNotFound {
 			return nil, nil
 		}
+		log.Printf("Failed to get user with email %s: %v", email, result.Error)
 		return nil, errors.DatabaseError("get by email", result.Error)
 	}
 

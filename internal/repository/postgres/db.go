@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -8,6 +9,9 @@ import (
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+
+	"gorm.io/driver/postgres"
 )
 
 // Config holds the database configuration
@@ -88,6 +92,51 @@ func ConnectWithParams(host, port, user, password, dbname, sslmode string) (*gor
 	}).Exec("SET statement_timeout = ?", 5000) // 5 seconds in milliseconds
 
 	return db, nil
+}
+
+func NewPostgresDB(cfg *Config) (*gorm.DB, error) {
+	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName)
+
+	sqlDB, err := sql.Open("postgres", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("error opening database: %v", err)
+	}
+
+	// Configure connection pool
+	sqlDB.SetMaxIdleConns(100)
+	sqlDB.SetMaxOpenConns(1000)
+	sqlDB.SetConnMaxLifetime(30 * time.Minute)
+	sqlDB.SetConnMaxIdleTime(10 * time.Minute)
+
+	// Configure connection timeouts
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Test the connection with timeout
+	if err := sqlDB.PingContext(ctx); err != nil {
+		return nil, fmt.Errorf("error pinging database: %v", err)
+	}
+
+	gormDB, err := gorm.Open(postgres.New(postgres.Config{
+		Conn: sqlDB,
+		PreferSimpleProtocol: true, // Reduces connection overhead
+	}), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Info),
+		PrepareStmt: true, // Caches prepared statements
+		NowFunc: func() time.Time {
+			return time.Now().UTC()
+		},
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("error creating gorm db: %v", err)
+	}
+
+	// Enable connection pooling
+	gormDB = gormDB.Set("gorm:auto_preload", true)
+
+	return gormDB, nil
 }
 
 func getEnv(key, defaultValue string) string {

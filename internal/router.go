@@ -2,6 +2,7 @@ package internal
 
 import (
 	"UserRESTfulApi/internal/handlers"
+	"UserRESTfulApi/internal/middleware"
 	"UserRESTfulApi/internal/repository/postgres"
 	"UserRESTfulApi/internal/service"
 
@@ -23,6 +24,9 @@ func NewRouter(db *gorm.DB) *Router {
 // SetupRouter sets up the router with all routes
 func SetupRouter(db *gorm.DB) *gin.Engine {
 	router := gin.Default()
+
+	// Add metrics middleware
+	router.Use(middleware.Metrics())
 
 	// Create dependencies
 	userRepo := postgres.NewUserRepository(db)
