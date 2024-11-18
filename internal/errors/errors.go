@@ -1,23 +1,7 @@
 package errors
 
-import (
-	"errors"
-	"fmt"
-)
+import "fmt"
 
-// Error types
-var (
-	ErrNotFound          = errors.New("resource not found")
-	ErrInvalidInput      = errors.New("invalid input")
-	ErrDuplicateEmail    = errors.New("email already exists")
-	ErrInvalidEmail      = errors.New("invalid email format")
-	ErrInvalidPassword   = errors.New("invalid password")
-	ErrUnauthorized      = errors.New("unauthorized")
-	ErrInternalServer    = errors.New("internal server error")
-	ErrDatabaseOperation = errors.New("database operation failed")
-)
-
-// ErrorType represents the type of error
 type ErrorType string
 
 const (
@@ -26,98 +10,71 @@ const (
 	DuplicateEmail    ErrorType = "DUPLICATE_EMAIL"
 	InvalidEmail      ErrorType = "INVALID_EMAIL"
 	InvalidPassword   ErrorType = "INVALID_PASSWORD"
-	Unauthorized      ErrorType = "UNAUTHORIZED"
-	InternalServer    ErrorType = "INTERNAL_SERVER"
 	DatabaseOperation ErrorType = "DATABASE_OPERATION"
+	InternalServer    ErrorType = "INTERNAL_SERVER"
 )
 
-// AppError represents a custom application error
 type AppError struct {
-	Type    ErrorType `json:"type"`
-	Message string    `json:"message"`
-	Err     error    `json:"-"` // Original error (if any)
+	Type    ErrorType
+	Message string
 }
 
-// Error returns the error message
 func (e *AppError) Error() string {
 	return e.Message
 }
 
-// Unwrap returns the original error
-func (e *AppError) Unwrap() error {
-	return e.Err
-}
-
-// AppErrorf creates a new AppError with formatted message
-func AppErrorf(errType ErrorType, format string, args ...interface{}) *AppError {
-	return &AppError{
-		Type:    errType,
-		Message: fmt.Sprintf(format, args...),
-		Err:     nil,
-	}
-}
-
-// Error constructors for common cases
-func NotFoundError(resource string, id interface{}) *AppError {
+// NotFoundError creates a new not found error
+func NotFoundError(resource string, id interface{}) error {
 	return &AppError{
 		Type:    NotFound,
 		Message: fmt.Sprintf("%s with ID %v not found", resource, id),
-		Err:     ErrNotFound,
 	}
 }
 
-func InvalidInputError(field, reason string) *AppError {
+// InvalidInputError creates a new invalid input error
+func InvalidInputError(field, reason string) error {
 	return &AppError{
 		Type:    InvalidInput,
-		Message: fmt.Sprintf("invalid %s: %s", field, reason),
-		Err:     ErrInvalidInput,
+		Message: fmt.Sprintf("Invalid input for %s: %s", field, reason),
 	}
 }
 
-func DuplicateEmailError(email string) *AppError {
+// DuplicateEmailError creates a new duplicate email error
+func DuplicateEmailError(email string) error {
 	return &AppError{
 		Type:    DuplicateEmail,
-		Message: fmt.Sprintf("email %s already exists", email),
-		Err:     ErrDuplicateEmail,
+		Message: fmt.Sprintf("Email %s is already registered", email),
 	}
 }
 
-func InvalidEmailError(email string) *AppError {
+// InvalidEmailError creates a new invalid email error
+func InvalidEmailError(email string) error {
 	return &AppError{
 		Type:    InvalidEmail,
-		Message: fmt.Sprintf("invalid email format: %s", email),
-		Err:     ErrInvalidEmail,
+		Message: fmt.Sprintf("Invalid email format: %s", email),
 	}
 }
 
-func InvalidPasswordError(reason string) *AppError {
+// InvalidPasswordError creates a new invalid password error
+func InvalidPasswordError(reason string) error {
 	return &AppError{
 		Type:    InvalidPassword,
-		Message: fmt.Sprintf("invalid password: %s", reason),
-		Err:     ErrInvalidPassword,
+		Message: fmt.Sprintf("Invalid password: %s", reason),
 	}
 }
 
-func UnauthorizedError(reason string) *AppError {
-	return &AppError{
-		Type:    Unauthorized,
-		Message: fmt.Sprintf("unauthorized: %s", reason),
-		Err:     ErrUnauthorized,
-	}
-}
-
-func InternalServerError(err error) *AppError {
-	return &AppError{
-		Type:    InternalServer,
-		Message: "internal server error",
-		Err:     err,
-	}
-}
-
-func DatabaseError(operation string, err error) *AppError {
+// DatabaseError creates a new database operation error
+func DatabaseError(operation string, err error) error {
 	return &AppError{
 		Type:    DatabaseOperation,
-		Message: fmt.Sprintf("database %s operation failed", operation),
-		Err:     err,
+		Message: fmt.Sprintf("Database %s error: %v", operation, err),
+	}
+}
+
+// InternalServerError creates a new internal server error
+func InternalServerError(err error) error {
+	return &AppError{
+		Type:    InternalServer,
+		Message: fmt.Sprintf("Internal server error: %v", err),
 	}
 }

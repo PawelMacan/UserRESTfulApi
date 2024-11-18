@@ -1,135 +1,156 @@
 package handlers
 
 import (
+	"UserRESTfulApi/internal/domain"
+	"UserRESTfulApi/internal/errors"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/user-api/internal/domain"
-	"github.com/user-api/internal/errors"
 )
 
 type UserHandler struct {
 	service domain.UserService
 }
 
+// NewUserHandler creates a new user handler
 func NewUserHandler(service domain.UserService) *UserHandler {
 	return &UserHandler{service: service}
 }
 
-// handleError converts application errors to appropriate HTTP responses
-func handleError(c *gin.Context, err error) {
-	appErr, ok := err.(*errors.AppError)
-	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	switch appErr.Type {
-	case errors.NotFound:
-		c.JSON(http.StatusNotFound, gin.H{"error": appErr.Message})
-	case errors.InvalidInput, errors.InvalidEmail, errors.InvalidPassword:
-		c.JSON(http.StatusBadRequest, gin.H{"error": appErr.Message})
-	case errors.DuplicateEmail:
-		c.JSON(http.StatusConflict, gin.H{"error": appErr.Message})
-	case errors.Unauthorized:
-		c.JSON(http.StatusUnauthorized, gin.H{"error": appErr.Message})
-	case errors.DatabaseOperation:
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": appErr.Message})
-	default:
-		c.JSON(http.StatusInternalServerError, gin.H{"error": appErr.Message})
-	}
-}
-
-// CreateUser handles POST /users
+// CreateUser handles user creation
 func (h *UserHandler) CreateUser(c *gin.Context) {
 	var user domain.User
 	if err := c.ShouldBindJSON(&user); err != nil {
-		handleError(c, errors.InvalidInputError("request body", err.Error()))
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	if err := h.service.CreateUser(&user); err != nil {
-		handleError(c, err)
+	err := h.service.Create(&user)
+	if err != nil {
+		appErr, ok := err.(*errors.AppError)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+			return
+		}
+
+		switch appErr.Type {
+		case errors.InvalidEmail, errors.InvalidPassword, errors.InvalidInput:
+			c.JSON(http.StatusBadRequest, gin.H{"error": appErr.Error()})
+		case errors.DuplicateEmail:
+			c.JSON(http.StatusConflict, gin.H{"error": appErr.Error()})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		}
 		return
 	}
 
 	c.JSON(http.StatusCreated, user)
 }
 
-// GetUser handles GET /users/:id
+// GetUser handles user retrieval
 func (h *UserHandler) GetUser(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		handleError(c, errors.InvalidInputError("id", "must be a positive integer"))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
 		return
 	}
 
-	user, err := h.service.GetUser(uint(id))
+	user, err := h.service.Get(uint(id))
 	if err != nil {
-		handleError(c, err)
+		appErr, ok := err.(*errors.AppError)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+			return
+		}
+
+		switch appErr.Type {
+		case errors.NotFound:
+			c.JSON(http.StatusNotFound, gin.H{"error": appErr.Error()})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		}
 		return
 	}
 
 	c.JSON(http.StatusOK, user)
 }
 
-// UpdateUser handles PUT /users/:id
+// UpdateUser handles user updates
 func (h *UserHandler) UpdateUser(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		handleError(c, errors.InvalidInputError("id", "must be a positive integer"))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
 		return
 	}
 
 	var user domain.User
 	if err := c.ShouldBindJSON(&user); err != nil {
-		handleError(c, errors.InvalidInputError("request body", err.Error()))
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	user.ID = uint(id)
-	if err := h.service.UpdateUser(&user); err != nil {
-		handleError(c, err)
+	err = h.service.Update(&user)
+	if err != nil {
+		appErr, ok := err.(*errors.AppError)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+			return
+		}
+
+		switch appErr.Type {
+		case errors.NotFound:
+			c.JSON(http.StatusNotFound, gin.H{"error": appErr.Error()})
+		case errors.InvalidEmail, errors.InvalidPassword, errors.InvalidInput:
+			c.JSON(http.StatusBadRequest, gin.H{"error": appErr.Error()})
+		case errors.DuplicateEmail:
+			c.JSON(http.StatusConflict, gin.H{"error": appErr.Error()})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		}
 		return
 	}
 
 	c.JSON(http.StatusOK, user)
 }
 
-// DeleteUser handles DELETE /users/:id
+// DeleteUser handles user deletion
 func (h *UserHandler) DeleteUser(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		handleError(c, errors.InvalidInputError("id", "must be a positive integer"))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
 		return
 	}
 
-	if err := h.service.DeleteUser(uint(id)); err != nil {
-		handleError(c, err)
+	err = h.service.Delete(uint(id))
+	if err != nil {
+		appErr, ok := err.(*errors.AppError)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+			return
+		}
+
+		switch appErr.Type {
+		case errors.NotFound:
+			c.JSON(http.StatusNotFound, gin.H{"error": appErr.Error()})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		}
 		return
 	}
 
-	c.Status(http.StatusNoContent)
+	c.JSON(http.StatusOK, gin.H{"message": "User deleted successfully"})
 }
 
-// ListUsers handles GET /users
+// ListUsers handles user listing with pagination
 func (h *UserHandler) ListUsers(c *gin.Context) {
-	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
-	if err != nil || page < 1 {
-		handleError(c, errors.InvalidInputError("page", "must be a positive integer"))
-		return
-	}
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 
-	limit, err := strconv.Atoi(c.DefaultQuery("limit", "10"))
-	if err != nil || limit < 1 {
-		handleError(c, errors.InvalidInputError("limit", "must be a positive integer"))
-		return
-	}
-
-	users, err := h.service.ListUsers(page, limit)
+	users, err := h.service.List(page, limit)
 	if err != nil {
-		handleError(c, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
 		return
 	}
 

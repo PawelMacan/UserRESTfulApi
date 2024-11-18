@@ -1,7 +1,12 @@
 package internal
 
 import (
+	"UserRESTfulApi/internal/handlers"
+	"UserRESTfulApi/internal/repository/postgres"
+	"UserRESTfulApi/internal/service"
+
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // Router handles all routing for the application
@@ -10,30 +15,40 @@ type Router struct {
 }
 
 // NewRouter creates a new router instance
-func NewRouter() *Router {
-	engine := gin.Default()
+func NewRouter(db *gorm.DB) *Router {
+	engine := SetupRouter(db)
 	return &Router{engine: engine}
 }
 
-// SetupRoutes configures all the routes for the application
-func (r *Router) SetupRoutes() {
+// SetupRouter sets up the router with all routes
+func SetupRouter(db *gorm.DB) *gin.Engine {
+	router := gin.Default()
+
+	// Create dependencies
+	userRepo := postgres.NewUserRepository(db)
+	userService := service.NewUserService(userRepo)
+	userHandler := handlers.NewUserHandler(userService)
+
+	// API routes
+	api := router.Group("/api")
+	{
+		// User routes
+		users := api.Group("/users")
+		{
+			users.POST("", userHandler.CreateUser)
+			users.GET("/:id", userHandler.GetUser)
+			users.PUT("/:id", userHandler.UpdateUser)
+			users.DELETE("/:id", userHandler.DeleteUser)
+			users.GET("", userHandler.ListUsers)
+		}
+	}
+
 	// Health check
-	r.engine.GET("/health", func(c *gin.Context) {
+	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
-	// API v1 routes
-	v1 := r.engine.Group("/api/v1")
-	{
-		users := v1.Group("/users")
-		{
-			users.POST("/", nil)       // Create user
-			users.GET("/:id", nil)     // Get user by ID
-			users.PUT("/:id", nil)     // Update user
-			users.DELETE("/:id", nil)  // Delete user
-			users.GET("/", nil)        // List users
-		}
-	}
+	return router
 }
 
 // Run starts the HTTP server
