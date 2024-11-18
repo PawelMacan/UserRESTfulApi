@@ -1,133 +1,145 @@
 package service
 
 import (
-	"fmt"
 	"net/mail"
 
 	"github.com/user-api/internal/domain"
+	"github.com/user-api/internal/errors"
 	"github.com/user-api/pkg/password"
-	"github.com/user-api/pkg/validation"
 )
 
 type userService struct {
 	repo domain.UserRepository
 }
 
-// NewUserService creates a new user service
 func NewUserService(repo domain.UserRepository) domain.UserService {
 	return &userService{repo: repo}
 }
 
 func (s *userService) CreateUser(user *domain.User) error {
-	// Validate user data
-	if err := s.validateUser(user); err != nil {
-		return err
+	// Validate email format
+	if _, err := mail.ParseAddress(user.Email); err != nil {
+		return errors.InvalidEmailError(user.Email)
+	}
+
+	// Check if email already exists
+	existingUser, err := s.repo.GetByEmail(user.Email)
+	if err == nil && existingUser != nil {
+		return errors.DuplicateEmailError(user.Email)
 	}
 
 	// Validate password
-	if err := validation.ValidatePassword(user.Password); err != nil {
-		return fmt.Errorf("invalid password: %v", err)
+	if err := password.Validate(user.Password); err != nil {
+		return errors.InvalidPasswordError(err.Error())
 	}
 
-	// Hash the password before saving
+	// Hash password
 	hashedPassword, err := password.Hash(user.Password)
 	if err != nil {
-		return fmt.Errorf("error hashing password: %v", err)
+		return errors.InternalServerError(err)
 	}
 	user.Password = hashedPassword
 
-	return s.repo.Create(user)
+	// Create user
+	if err := s.repo.Create(user); err != nil {
+		return errors.DatabaseError("create", err)
+	}
+
+	return nil
 }
 
 func (s *userService) GetUser(id uint) (*domain.User, error) {
 	user, err := s.repo.GetByID(id)
 	if err != nil {
-		return nil, err
-	}
-	if user == nil {
-		return nil, fmt.Errorf("user not found")
+		return nil, errors.NotFoundError("user", id)
 	}
 	return user, nil
 }
 
 func (s *userService) UpdateUser(user *domain.User) error {
 	// Check if user exists
-	existing, err := s.repo.GetByID(user.ID)
+	existingUser, err := s.repo.GetByID(user.ID)
 	if err != nil {
-		return err
-	}
-	if existing == nil {
-		return fmt.Errorf("user not found")
+		return errors.NotFoundError("user", user.ID)
 	}
 
-	// If password is provided, validate and hash it
-	if user.Password != "" {
-		if err := validation.ValidatePassword(user.Password); err != nil {
-			return fmt.Errorf("invalid password: %v", err)
+	// Validate email format if changed
+	if user.Email != existingUser.Email {
+		if _, err := mail.ParseAddress(user.Email); err != nil {
+			return errors.InvalidEmailError(user.Email)
 		}
+
+		// Check if new email is already taken
+		emailUser, err := s.repo.GetByEmail(user.Email)
+		if err == nil && emailUser != nil && emailUser.ID != user.ID {
+			return errors.DuplicateEmailError(user.Email)
+		}
+	}
+
+	// Validate and hash password if changed
+	if user.Password != "" {
+		if err := password.Validate(user.Password); err != nil {
+			return errors.InvalidPasswordError(err.Error())
+		}
+
 		hashedPassword, err := password.Hash(user.Password)
 		if err != nil {
-			return fmt.Errorf("error hashing password: %v", err)
+			return errors.InternalServerError(err)
 		}
 		user.Password = hashedPassword
 	} else {
-		// Keep existing password if not provided
-		user.Password = existing.Password
+		user.Password = existingUser.Password
 	}
 
-	// Validate user data
-	if err := s.validateUser(user); err != nil {
-		return err
-	}
-
-	return s.repo.Update(user)
-}
-
-func (s *userService) DeleteUser(id uint) error {
-	// Check if user exists
-	existing, err := s.repo.GetByID(id)
-	if err != nil {
-		return err
-	}
-	if existing == nil {
-		return fmt.Errorf("user not found")
-	}
-
-	return s.repo.Delete(id)
-}
-
-func (s *userService) ListUsers(page, limit int) ([]*domain.User, error) {
-	return s.repo.List(page, limit)
-}
-
-func (s *userService) validateUser(user *domain.User) error {
-	if user.Email == "" {
-		return fmt.Errorf("email is required")
-	}
-	if user.Name == "" {
-		return fmt.Errorf("name is required")
-	}
-
-	// Validate email format
-	if _, err := mail.ParseAddress(user.Email); err != nil {
-		return fmt.Errorf("invalid email format")
+	// Update user
+	if err := s.repo.Update(user); err != nil {
+		return errors.DatabaseError("update", err)
 	}
 
 	return nil
 }
 
-// VerifyPassword checks if the provided password matches the user's password
+func (s *userService) DeleteUser(id uint) error {
+	// Check if user exists
+	if _, err := s.repo.GetByID(id); err != nil {
+		return errors.NotFoundError("user", id)
+	}
+
+	// Delete user
+	if err := s.repo.Delete(id); err != nil {
+		return errors.DatabaseError("delete", err)
+	}
+
+	return nil
+}
+
+func (s *userService) ListUsers(page, limit int) ([]*domain.User, error) {
+	if page < 1 {
+		return nil, errors.InvalidInputError("page", "must be greater than 0")
+	}
+	if limit < 1 {
+		return nil, errors.InvalidInputError("limit", "must be greater than 0")
+	}
+
+	users, err := s.repo.List(page, limit)
+	if err != nil {
+		return nil, errors.DatabaseError("list", err)
+	}
+
+	return users, nil
+}
+
 func (s *userService) VerifyPassword(email, plainPassword string) (*domain.User, error) {
 	user, err := s.repo.GetByEmail(email)
 	if err != nil {
-		return nil, err
+		return nil, errors.NotFoundError("user", email)
 	}
 	if user == nil {
-		return nil, fmt.Errorf("user not found")
+		return nil, errors.NotFoundError("user", email)
 	}
 
 	if !password.Verify(plainPassword, user.Password) {
-		return nil, fmt.Errorf("invalid password")
+		return nil, errors.InvalidPasswordError("password does not match")
 	}
 
 	return user, nil

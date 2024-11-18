@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"time"
 
 	_ "github.com/lib/pq"
 )
@@ -30,21 +31,34 @@ func NewConfig() *Config {
 	}
 }
 
-// Connect establishes a connection to the database
+// Connect establishes a connection to the database with retries
 func Connect(config *Config) (*sql.DB, error) {
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		config.Host, config.Port, config.User, config.Password, config.DBName, config.SSLMode)
 
-	db, err := sql.Open("postgres", dsn)
-	if err != nil {
-		return nil, fmt.Errorf("error opening database: %v", err)
+	var db *sql.DB
+	var err error
+	
+	// Try to connect with retries
+	maxRetries := 5
+	for i := 0; i < maxRetries; i++ {
+		db, err = sql.Open("postgres", dsn)
+		if err != nil {
+			time.Sleep(time.Second * 2)
+			continue
+		}
+
+		// Test the connection
+		err = db.Ping()
+		if err == nil {
+			return db, nil
+		}
+
+		fmt.Printf("Failed to connect to database (attempt %d/%d): %v\n", i+1, maxRetries, err)
+		time.Sleep(time.Second * 2)
 	}
 
-	if err = db.Ping(); err != nil {
-		return nil, fmt.Errorf("error connecting to the database: %v", err)
-	}
-
-	return db, nil
+	return nil, fmt.Errorf("failed to connect to database after %d attempts: %v", maxRetries, err)
 }
 
 func getEnv(key, defaultValue string) string {

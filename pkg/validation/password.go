@@ -46,14 +46,14 @@ func (e PasswordError) Error() string {
 	return ""
 }
 
-// ValidatePassword checks if a password meets the following criteria:
+// Validate checks if a password meets the following criteria:
 // - Between MinPasswordLength and MaxPasswordLength characters long
 // - Contains at least one uppercase letter
 // - Contains at least one lowercase letter
 // - Contains at least one number
 // - Contains at least one special character
 // - Does not contain spaces
-func ValidatePassword(password string) error {
+func Validate(password string) error {
 	var err PasswordError
 
 	if len(password) < MinPasswordLength {

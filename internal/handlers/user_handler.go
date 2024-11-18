@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/user-api/internal/domain"
+	"github.com/user-api/internal/errors"
 )
 
 type UserHandler struct {
@@ -16,16 +17,40 @@ func NewUserHandler(service domain.UserService) *UserHandler {
 	return &UserHandler{service: service}
 }
 
+// handleError converts application errors to appropriate HTTP responses
+func handleError(c *gin.Context, err error) {
+	appErr, ok := err.(*errors.AppError)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	switch appErr.Type {
+	case errors.NotFound:
+		c.JSON(http.StatusNotFound, gin.H{"error": appErr.Message})
+	case errors.InvalidInput, errors.InvalidEmail, errors.InvalidPassword:
+		c.JSON(http.StatusBadRequest, gin.H{"error": appErr.Message})
+	case errors.DuplicateEmail:
+		c.JSON(http.StatusConflict, gin.H{"error": appErr.Message})
+	case errors.Unauthorized:
+		c.JSON(http.StatusUnauthorized, gin.H{"error": appErr.Message})
+	case errors.DatabaseOperation:
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": appErr.Message})
+	default:
+		c.JSON(http.StatusInternalServerError, gin.H{"error": appErr.Message})
+	}
+}
+
 // CreateUser handles POST /users
 func (h *UserHandler) CreateUser(c *gin.Context) {
 	var user domain.User
 	if err := c.ShouldBindJSON(&user); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		handleError(c, errors.InvalidInputError("request body", err.Error()))
 		return
 	}
 
 	if err := h.service.CreateUser(&user); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		handleError(c, err)
 		return
 	}
 
@@ -36,13 +61,13 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 func (h *UserHandler) GetUser(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user ID"})
+		handleError(c, errors.InvalidInputError("id", "must be a positive integer"))
 		return
 	}
 
 	user, err := h.service.GetUser(uint(id))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		handleError(c, err)
 		return
 	}
 
@@ -53,19 +78,19 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 func (h *UserHandler) UpdateUser(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user ID"})
+		handleError(c, errors.InvalidInputError("id", "must be a positive integer"))
 		return
 	}
 
 	var user domain.User
 	if err := c.ShouldBindJSON(&user); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		handleError(c, errors.InvalidInputError("request body", err.Error()))
 		return
 	}
 
 	user.ID = uint(id)
 	if err := h.service.UpdateUser(&user); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		handleError(c, err)
 		return
 	}
 
@@ -76,12 +101,12 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 func (h *UserHandler) DeleteUser(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user ID"})
+		handleError(c, errors.InvalidInputError("id", "must be a positive integer"))
 		return
 	}
 
 	if err := h.service.DeleteUser(uint(id)); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		handleError(c, err)
 		return
 	}
 
@@ -90,12 +115,21 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 
 // ListUsers handles GET /users
 func (h *UserHandler) ListUsers(c *gin.Context) {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if err != nil || page < 1 {
+		handleError(c, errors.InvalidInputError("page", "must be a positive integer"))
+		return
+	}
+
+	limit, err := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	if err != nil || limit < 1 {
+		handleError(c, errors.InvalidInputError("limit", "must be a positive integer"))
+		return
+	}
 
 	users, err := h.service.ListUsers(page, limit)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		handleError(c, err)
 		return
 	}
 
