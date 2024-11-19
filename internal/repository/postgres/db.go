@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"os"
@@ -10,8 +11,6 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
-
-	"gorm.io/driver/postgres"
 )
 
 // Config holds the database configuration
@@ -80,15 +79,15 @@ func ConnectWithParams(host, port, user, password, dbname, sslmode string) (*gor
 	}
 
 	// Configure connection pool
-	sqlDB.SetMaxOpenConns(1000)     // Maximum number of open connections
-	sqlDB.SetMaxIdleConns(100)      // Maximum number of idle connections
-	sqlDB.SetConnMaxLifetime(time.Hour) // Maximum lifetime of a connection
+	sqlDB.SetMaxOpenConns(1000)                // Maximum number of open connections
+	sqlDB.SetMaxIdleConns(100)                 // Maximum number of idle connections
+	sqlDB.SetConnMaxLifetime(time.Hour)        // Maximum lifetime of a connection
 	sqlDB.SetConnMaxIdleTime(time.Minute * 30) // Maximum idle time for a connection
 
 	// Configure statement timeout using GORM
 	db = db.Session(&gorm.Session{
-		PrepareStmt:      true,
-		CreateBatchSize:  1000,
+		PrepareStmt:     true,
+		CreateBatchSize: 1000,
 	}).Exec("SET statement_timeout = ?", 5000) // 5 seconds in milliseconds
 
 	return db, nil
@@ -119,10 +118,10 @@ func NewPostgresDB(cfg *Config) (*gorm.DB, error) {
 	}
 
 	gormDB, err := gorm.Open(postgres.New(postgres.Config{
-		Conn: sqlDB,
+		Conn:                 sqlDB,
 		PreferSimpleProtocol: true, // Reduces connection overhead
 	}), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		Logger:      logger.Default.LogMode(logger.Info),
 		PrepareStmt: true, // Caches prepared statements
 		NowFunc: func() time.Time {
 			return time.Now().UTC()
