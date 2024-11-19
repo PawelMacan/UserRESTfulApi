@@ -21,8 +21,10 @@
 go.work
 go.work.sum
 
-# env file
+# Environment files
 .env
+.env.local
+.env.*.local
 
 # IDE specific files
 .idea/
@@ -30,3 +32,18 @@ go.work.sum
 .vscode/
 *.swp
 *.swo
+
+# Logs
+*.log
+logs/
+
+# Binary files
+bin/
+dist/
+
+# Test coverage
+coverage.txt
+coverage.html
+
+# macOS specific
+.DS_Store

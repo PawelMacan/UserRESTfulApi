@@ -62,6 +62,30 @@ POSTGRES_PASSWORD=postgres
 POSTGRES_DB=userapi
 ```
 
+## Quick Start
+
+1. Clone the repository:
+```bash
+git clone <your-repository-url>
+cd UserRESTfulApi
+```
+
+2. Set up environment variables:
+```bash
+cp .env.example .env
+# Edit .env with your desired configuration
+```
+
+3. Start the application stack:
+```bash
+docker-compose up -d
+```
+
+4. Verify the application is running:
+```bash
+curl http://localhost:8080/health
+```
+
 ## Running the Application
 
 ### Using Docker Compose (Recommended)
