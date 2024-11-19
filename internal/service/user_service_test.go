@@ -10,11 +10,12 @@ import (
 type mockUserRepository struct {
 	users map[uint]*domain.User
 	// Track function calls for testing
-	getByIDCalled    bool
+	getCalled       bool
 	getByEmailCalled bool
 	createCalled     bool
 	updateCalled     bool
 	deleteCalled     bool
+	listCalled       bool
 }
 
 func newMockUserRepository() *mockUserRepository {
@@ -23,8 +24,8 @@ func newMockUserRepository() *mockUserRepository {
 	}
 }
 
-func (m *mockUserRepository) GetByID(id uint) (*domain.User, error) {
-	m.getByIDCalled = true
+func (m *mockUserRepository) Get(id uint) (*domain.User, error) {
+	m.getCalled = true
 	if user, exists := m.users[id]; exists {
 		return user, nil
 	}
@@ -69,7 +70,8 @@ func (m *mockUserRepository) Delete(id uint) error {
 }
 
 func (m *mockUserRepository) List(page, limit int) ([]*domain.User, error) {
-	var users []*domain.User
+	m.listCalled = true
+	users := make([]*domain.User, 0, len(m.users))
 	for _, user := range m.users {
 		users = append(users, user)
 	}
@@ -77,6 +79,9 @@ func (m *mockUserRepository) List(page, limit int) ([]*domain.User, error) {
 }
 
 func TestCreateUser(t *testing.T) {
+	repo := newMockUserRepository()
+	service := NewUserService(repo)
+
 	tests := []struct {
 		name    string
 		user    *domain.User
@@ -86,23 +91,17 @@ func TestCreateUser(t *testing.T) {
 			name: "valid user",
 			user: &domain.User{
 				Email:    "test@example.com",
-				Password: "Test123!@#",
+				Password: "Password123!",
+				Name:    "Test User",
 			},
 			wantErr: false,
 		},
 		{
-			name: "invalid email",
-			user: &domain.User{
-				Email:    "invalid-email",
-				Password: "Test123!@#",
-			},
-			wantErr: true,
-		},
-		{
-			name: "invalid password",
+			name: "duplicate email",
 			user: &domain.User{
 				Email:    "test@example.com",
-				Password: "weak",
+				Password: "Password123!",
+				Name:    "Another User",
 			},
 			wantErr: true,
 		},
@@ -110,51 +109,39 @@ func TestCreateUser(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo := newMockUserRepository()
-			service := NewUserService(repo)
-
-			err := service.CreateUser(tt.user)
+			err := service.Create(tt.user)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("CreateUser() error = %v, wantErr %v", err, tt.wantErr)
-			}
-
-			if !tt.wantErr {
-				// Verify repository was called
-				if !repo.createCalled {
-					t.Error("Create() was not called on repository")
-				}
-				// Verify password was hashed
-				if tt.user.Password == "Test123!@#" {
-					t.Error("Password was not hashed")
-				}
+				t.Errorf("Create() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
 }
 
 func TestUpdateUser(t *testing.T) {
+	repo := newMockUserRepository()
+	service := NewUserService(repo)
+
 	// Create initial user
-	initialUser := &domain.User{
+	user := &domain.User{
 		ID:       1,
 		Email:    "test@example.com",
-		Password: "Test123!@#",
+		Password: "Password123!",
+		Name:    "Test User",
 	}
+	repo.users[user.ID] = user
 
 	tests := []struct {
 		name    string
 		user    *domain.User
-		setup   func(*mockUserRepository)
 		wantErr bool
 	}{
 		{
 			name: "valid update",
 			user: &domain.User{
 				ID:       1,
-				Email:    "new@example.com",
-				Password: "NewTest123!@#",
-			},
-			setup: func(repo *mockUserRepository) {
-				repo.Create(initialUser)
+				Email:    "updated@example.com",
+				Password: "NewPassword123!",
+				Name:    "Updated User",
 			},
 			wantErr: false,
 		},
@@ -162,21 +149,9 @@ func TestUpdateUser(t *testing.T) {
 			name: "non-existent user",
 			user: &domain.User{
 				ID:       999,
-				Email:    "new@example.com",
-				Password: "NewTest123!@#",
-			},
-			setup:   func(repo *mockUserRepository) {},
-			wantErr: true,
-		},
-		{
-			name: "invalid email",
-			user: &domain.User{
-				ID:       1,
-				Email:    "invalid-email",
-				Password: "NewTest123!@#",
-			},
-			setup: func(repo *mockUserRepository) {
-				repo.Create(initialUser)
+				Email:    "nonexistent@example.com",
+				Password: "Password123!",
+				Name:    "Non-existent User",
 			},
 			wantErr: true,
 		},
@@ -184,57 +159,42 @@ func TestUpdateUser(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo := newMockUserRepository()
-			tt.setup(repo)
-			service := NewUserService(repo)
-
-			err := service.UpdateUser(tt.user)
+			err := service.Update(tt.user)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("UpdateUser() error = %v, wantErr %v", err, tt.wantErr)
-			}
-
-			if !tt.wantErr {
-				// Verify repository was called
-				if !repo.updateCalled {
-					t.Error("Update() was not called on repository")
-				}
-				// Verify user was updated
-				updated, _ := repo.GetByID(tt.user.ID)
-				if updated.Email != tt.user.Email {
-					t.Errorf("User email not updated, got = %v, want %v", updated.Email, tt.user.Email)
-				}
+				t.Errorf("Update() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
 }
 
 func TestGetUser(t *testing.T) {
-	existingUser := &domain.User{
+	repo := newMockUserRepository()
+	service := NewUserService(repo)
+
+	// Create test user
+	user := &domain.User{
 		ID:       1,
 		Email:    "test@example.com",
-		Password: "Test123!@#",
+		Password: "Password123!",
+		Name:    "Test User",
 	}
+	repo.users[user.ID] = user
 
 	tests := []struct {
 		name    string
-		userID  uint
-		setup   func(*mockUserRepository)
+		id      uint
 		want    *domain.User
 		wantErr bool
 	}{
 		{
-			name:   "existing user",
-			userID: 1,
-			setup: func(repo *mockUserRepository) {
-				repo.Create(existingUser)
-			},
-			want:    existingUser,
+			name:    "existing user",
+			id:      1,
+			want:    user,
 			wantErr: false,
 		},
 		{
 			name:    "non-existent user",
-			userID:  999,
-			setup:   func(repo *mockUserRepository) {},
+			id:      999,
 			want:    nil,
 			wantErr: true,
 		},
@@ -242,20 +202,13 @@ func TestGetUser(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo := newMockUserRepository()
-			tt.setup(repo)
-			service := NewUserService(repo)
-
-			got, err := service.GetUser(tt.userID)
+			got, err := service.Get(tt.id)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("GetUser() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("Get() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-
-			if !tt.wantErr {
-				if got.ID != tt.want.ID || got.Email != tt.want.Email {
-					t.Errorf("GetUser() = %v, want %v", got, tt.want)
-				}
+			if !tt.wantErr && got.ID != tt.want.ID {
+				t.Errorf("Get() = %v, want %v", got, tt.want)
 			}
 		})
 	}

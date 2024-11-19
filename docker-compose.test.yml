@@ -10,7 +10,7 @@ services:
       POSTGRES_DB: user_api_test
       POSTGRES_HOST_AUTH_METHOD: trust
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - test-db-data:/var/lib/postgresql/data
     networks:
@@ -34,6 +34,13 @@ services:
         condition: service_healthy
     networks:
       - test-network
+    environment:
+      - DB_HOST=test-db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=user_api_test
+      - DB_SSLMODE=disable
 
 volumes:
   test-db-data:
