@@ -149,16 +149,63 @@ go run cmd/server/main.go
 ## Testing
 
 ### Unit Tests
+
+Run the unit tests:
 ```bash
-go test ./... -v
+go test ./internal/... ./pkg/... -v
 ```
 
 ### Integration Tests
+
+The project includes comprehensive integration tests that verify the entire API functionality in a containerized environment. The tests cover:
+- User CRUD operations
+- Input validation
+- Error handling
+- Data persistence
+- API response codes
+
+To run integration tests:
+
+1. Make sure Docker and docker-compose are installed and running.
+
+2. Run the integration test suite:
 ```bash
-go test ./tests/integration/... -v
+docker-compose -f docker-compose.test.yml up --build --abort-on-container-exit
 ```
 
-### Load Testing
+This will:
+- Start a dedicated test PostgreSQL database
+- Build and run the test application container
+- Execute all integration tests
+- Automatically clean up containers after completion
+
+The test environment uses separate configuration defined in `tests/integration/.env.test` to avoid conflicts with the development environment.
+
+#### Test Configuration
+
+The integration tests use their own environment variables defined in `tests/integration/.env.test`:
+```env
+# Database Configuration
+DB_HOST=test-db
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_NAME=user_api_test
+DB_SSLMODE=disable
+
+# Server Configuration
+SERVER_PORT=8081
+```
+
+#### Adding New Integration Tests
+
+To add new integration tests:
+1. Create a new test file in `tests/integration/`
+2. Use the provided test utilities and helpers
+3. Follow the existing patterns for consistency
+4. Ensure proper cleanup after test execution
+
+## Load Testing
 
 The application includes k6 load testing scripts:
 
